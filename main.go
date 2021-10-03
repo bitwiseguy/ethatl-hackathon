@@ -1,34 +1,33 @@
 package main
 
 import (
-	"fmt"
 	"log"
+	"os"
 
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/joho/godotenv"
 )
 
-var randomNumberContractAddress = "0xe7D85ad235B9C9E86E9904426a7E1d4F303c3aB3"
-
 func web3Connect() (*ethclient.Client, error) {
+	godotenv.Load(".env")
+	ethClient_ws := os.Getenv("ETH_CLIENT_WS")
+	
 	// Create an IPC based RPC connection to a remote node
-	conn, err := ethclient.Dial("https://rinkeby.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161")
+	conn, err := ethclient.Dial(ethClient_ws)
 	if err != nil {
 		log.Fatalf("Failed to connect to the Ethereum client: %v", err)
 	}
-	fmt.Println("Successful connection to eth client!")
+	log.Println("Successful connection to eth client!")
 	return conn, err
-}
-
-func setupEventListeners() {
-
 }
 
 func main() {
 	conn, err := web3Connect()
 	if err != nil {
-		fmt.Println("Failed to connect to Eth Client")
+		log.Println("Failed to connect to Eth Client")
 	}
 
-	setupEventListeners()
+	go setupEventListeners(*conn)
 	fetchEntropy(*conn, randomNumberContractAddress)
+	for true {}
 }

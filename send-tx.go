@@ -3,13 +3,13 @@ package main
 import (
 	"context"
 	"crypto/ecdsa"
-	"fmt"
 	"log"
 	"math/big"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -18,10 +18,17 @@ import (
 	"github.com/joho/godotenv"
 )
 
+var randomNumberContractAddress = "0x18E07922265D22a4e71401534F1AD2e406a32C78"
 var vrfConsumerABI = `[
 	{
 		"anonymous": false,
 		"inputs": [
+			{
+				"indexed": false,
+				"internalType": "bytes32",
+				"name": "",
+				"type": "bytes32"
+			},
 			{
 				"indexed": false,
 				"internalType": "uint256",
@@ -30,6 +37,19 @@ var vrfConsumerABI = `[
 			}
 		],
 		"name": "NewRandomNumber",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": false,
+				"internalType": "bytes32",
+				"name": "",
+				"type": "bytes32"
+			}
+		],
+		"name": "NewRequestId",
 		"type": "event"
 	},
 	{
@@ -83,6 +103,49 @@ var vrfConsumerABI = `[
 	}
 ]`
 
+func setupEventListeners(client ethclient.Client) {
+  query := ethereum.FilterQuery{
+    Addresses: []common.Address{common.HexToAddress(randomNumberContractAddress)},
+  }
+
+	logs := make(chan types.Log)
+	sub, err := client.SubscribeFilterLogs(context.Background(), query, logs)
+  if err != nil {
+    log.Fatal(err)
+  }
+
+	newRandomNumberEventSig := crypto.Keccak256Hash([]byte("NewRandomNumber(bytes32,uint256)"))
+	newRequestIdEventSig    := crypto.Keccak256Hash([]byte("NewRequestId(bytes32)"))
+	
+	contractAbi, err := abi.JSON(strings.NewReader(vrfConsumerABI))
+	
+	for {
+		select {
+		case err := <-sub.Err():
+			log.Fatal("Error with event subscription:", err)
+		case vLog := <-logs:
+			log.Println("Event received. Parsing logs...")
+
+			if vLog.Topics[0] == newRandomNumberEventSig {
+			  log.Println("NewRandomNumber event detected.")
+				event, err := contractAbi.Unpack("NewRandomNumber", vLog.Data)
+        if err != nil {
+          log.Fatal("Error unpacking event log:", err)
+        }
+			  log.Printf("Request ID: %+v\n", event[0])
+			  log.Println("Random number result:", event[1])
+			} else if vLog.Topics[0] == newRequestIdEventSig {
+			  log.Println("NewRequestId event detected.")
+			  event, err := contractAbi.Unpack("NewRequestId", vLog.Data)
+        if err != nil {
+          log.Fatal("Error unpacking event log:", err)
+        }
+			  log.Printf("Request ID: %+v\n", event[0])
+		  }
+		}
+	}
+}
+
 func fetchEntropy(client ethclient.Client, contractAddress string) {
 	godotenv.Load(".env")
 	privKey := os.Getenv("WALLET_PRIVATE_KEY")
@@ -92,7 +155,6 @@ func fetchEntropy(client ethclient.Client, contractAddress string) {
   defer cancel()
 
   contractAbi, err := abi.JSON(strings.NewReader(vrfConsumerABI))
-
 	privateKey, err := crypto.HexToECDSA(privKey)
 	if err != nil {
     	log.Fatal(err)
@@ -105,7 +167,7 @@ func fetchEntropy(client ethclient.Client, contractAddress string) {
 	}
     
 	fromAddress := crypto.PubkeyToAddress(*publicKeyECDSA)
-	fmt.Println("Sender's public address:", fromAddress)
+	log.Println("Sender's public address:", fromAddress)
   nonce, err := client.NonceAt(ctx, fromAddress, nil)
   if err != nil {
     log.Fatal(err)
@@ -122,8 +184,8 @@ func fetchEntropy(client ethclient.Client, contractAddress string) {
 	err = client.SendTransaction(ctx, signedTx)
 
 	if err != nil {
-		fmt.Println("Error sending tx:", err);
+		log.Println("Error sending tx:", err);
 	} else {
-		fmt.Println("Sent tx:", signedTx.Hash());
+		log.Println("Sent tx:", signedTx.Hash());
 	}
 }
