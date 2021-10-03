@@ -6,6 +6,8 @@ If you run the steps in the `Quickstart`, you should be able to produce a random
 
 As part of the development process, we deployed a VRF consumer on Rinkeby at 0x18E07922265D22a4e71401534F1AD2e406a32C78. This is the contract that gets targeted by the random number generation request. This contract then interacts with the VRFCoordinator contract, which the Chainlink nodes are subscribed to.
 
+Our script sets up on-chain event listeners to the VRF consumer contract and prints out results for triggered events when a random number request is made and when the Chainlink VRF contract process the request by returning a new random number.
+
 ## Prerequisites
 
 - Golang v1.16
